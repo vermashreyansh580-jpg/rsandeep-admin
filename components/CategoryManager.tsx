@@ -1,14 +1,15 @@
 'use client';
 
 import React, { useState, useRef } from 'react';
-import { Plus, Trash2, Edit3, Image as ImageIcon, Sparkles, AlertCircle, ArrowRight, Upload, X, Check } from 'lucide-react';
+import { Plus, Trash2, Edit3, Image as ImageIcon, Sparkles, ArrowRight, Upload, X, Check, Loader2 } from 'lucide-react';
 import { CategoryItem } from '@/types/catalog';
+import { uploadImageFile } from '@/lib/catalogService';
 
 interface CategoryManagerProps {
   categories: CategoryItem[];
   photoCounts: Record<string, number>;
   onAddCategory: (category: CategoryItem) => void;
-  onUpdateCategory: (category: CategoryItem) => void;
+  onUpdateCategory: (category: CategoryItem, oldId?: string) => void;
   onDeleteCategory: (id: string) => void;
   onSelectCategoryForPhotos: (id: string) => void;
 }
@@ -22,7 +23,7 @@ export default function CategoryManager({
   onSelectCategoryForPhotos,
 }: CategoryManagerProps) {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [editingCategory, setEditingCategory] = useState<CategoryItem | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
 
   // New Category Form State
   const [newTitle, setNewTitle] = useState('');
@@ -32,37 +33,49 @@ export default function CategoryManager({
   const [newImage, setNewImage] = useState('');
   const [imagePreview, setImagePreview] = useState('');
 
-  // Edit Cover Modal State
-  const [editCoverModal, setEditCoverModal] = useState<CategoryItem | null>(null);
-  const [newCoverUrl, setNewCoverUrl] = useState('');
+  // Edit Category Modal State (Name, Tag, Badge, Description, Cover)
+  const [editingCategory, setEditingCategory] = useState<CategoryItem | null>(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editTag, setEditTag] = useState('');
+  const [editDesc, setEditDesc] = useState('');
+  const [editBadge, setEditBadge] = useState('');
+  const [editImage, setEditImage] = useState('');
+  const [editPreview, setEditPreview] = useState('');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const coverFileInputRef = useRef<HTMLInputElement>(null);
+  const editFileInputRef = useRef<HTMLInputElement>(null);
 
   // Handle local file selection for new category
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onload = (uploadEvent) => {
-        const result = uploadEvent.target?.result as string;
-        setNewImage(result);
-        setImagePreview(result);
-      };
-      reader.readAsDataURL(file);
+      setIsUploading(true);
+      try {
+        const url = await uploadImageFile(file, 'categories');
+        setNewImage(url);
+        setImagePreview(url);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setIsUploading(false);
+      }
     }
   };
 
-  // Handle local file selection for editing cover
-  const handleCoverFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Handle local file selection for editing category
+  const handleEditFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onload = (uploadEvent) => {
-        const result = uploadEvent.target?.result as string;
-        setNewCoverUrl(result);
-      };
-      reader.readAsDataURL(file);
+      setIsUploading(true);
+      try {
+        const url = await uploadImageFile(file, 'categories');
+        setEditImage(url);
+        setEditPreview(url);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setIsUploading(false);
+      }
     }
   };
 
@@ -100,16 +113,31 @@ export default function CategoryManager({
     setImagePreview('');
   };
 
-  const handleSaveCoverImage = (e: React.FormEvent) => {
+  const openEditModal = (cat: CategoryItem) => {
+    setEditingCategory(cat);
+    setEditTitle(cat.title);
+    setEditTag(cat.tag || '');
+    setEditDesc(cat.desc || '');
+    setEditBadge(cat.badge || '');
+    setEditImage(cat.image);
+    setEditPreview(cat.image);
+  };
+
+  const handleSaveEditCategory = (e: React.FormEvent) => {
     e.preventDefault();
-    if (editCoverModal && newCoverUrl.trim()) {
-      onUpdateCategory({
-        ...editCoverModal,
-        image: newCoverUrl.trim(),
-      });
-      setEditCoverModal(null);
-      setNewCoverUrl('');
-    }
+    if (!editingCategory || !editTitle.trim()) return;
+
+    const updated: CategoryItem = {
+      ...editingCategory,
+      title: editTitle.trim(),
+      tag: editTag.trim() || 'FEATURED COLLECTION',
+      desc: editDesc.trim(),
+      badge: editBadge.trim() || undefined,
+      image: editImage.trim() || editingCategory.image,
+    };
+
+    onUpdateCategory(updated, editingCategory.id);
+    setEditingCategory(null);
   };
 
   return (
@@ -125,7 +153,7 @@ export default function CategoryManager({
             Category & Front Cover Management
           </h2>
           <p className="text-xs text-brand-muted mt-1">
-            Create new categories, customize front cover images, or delete categories anytime.
+            Create new categories, edit category names & descriptions, or replace front cover images anytime.
           </p>
         </div>
 
@@ -168,16 +196,13 @@ export default function CategoryManager({
                     </span>
                   )}
 
-                  {/* Change Front Cover Floating Button */}
+                  {/* Edit Category Details Floating Button */}
                   <button
-                    onClick={() => {
-                      setEditCoverModal(cat);
-                      setNewCoverUrl(cat.image);
-                    }}
+                    onClick={() => openEditModal(cat)}
                     className="absolute bottom-3 right-3 bg-brand-darkCard/90 hover:bg-brand-gold hover:text-brand-charcoal text-brand-goldLight text-xs px-3 py-1.5 rounded-lg border border-brand-gold/50 shadow flex items-center gap-1.5 transition-colors font-cinzel tracking-wider"
-                    title="Change Front Cover Image"
+                    title="Edit Category Name & Details"
                   >
-                    <Edit3 className="w-3.5 h-3.5" /> Change Cover
+                    <Edit3 className="w-3.5 h-3.5" /> Edit Category
                   </button>
                 </div>
 
@@ -186,9 +211,18 @@ export default function CategoryManager({
                   <span className="text-[10px] font-cinzel text-brand-gold tracking-widest uppercase font-semibold block mb-1">
                     {cat.tag || 'PORTFOLIO COLLECTION'}
                   </span>
-                  <h3 className="font-serif text-xl text-white font-medium mb-1">
-                    {cat.title}
-                  </h3>
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <h3 className="font-serif text-xl text-white font-medium">
+                      {cat.title}
+                    </h3>
+                    <button
+                      onClick={() => openEditModal(cat)}
+                      className="text-brand-muted hover:text-brand-gold p-1"
+                      title="Edit Category Name"
+                    >
+                      <Edit3 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                   <p className="text-xs text-brand-muted line-clamp-2 mb-3">
                     {cat.desc}
                   </p>
@@ -208,8 +242,16 @@ export default function CategoryManager({
                 </button>
 
                 <button
+                  onClick={() => openEditModal(cat)}
+                  className="p-2.5 bg-brand-charcoal hover:bg-brand-darkCard text-brand-gold border border-brand-borderDark rounded-lg transition-colors"
+                  title="Edit Category Name & Front Image"
+                >
+                  <Edit3 className="w-4 h-4" />
+                </button>
+
+                <button
                   onClick={() => {
-                    if (confirm(`Are you sure you want to delete category "${cat.title}" and its photos?`)) {
+                    if (confirm(`Are you sure you want to delete category "${cat.title}" and all its photos?`)) {
                       onDeleteCategory(cat.id);
                     }
                   }}
@@ -248,7 +290,7 @@ export default function CategoryManager({
             <form onSubmit={handleCreateSubmit} className="space-y-5">
               <div>
                 <label className="block text-xs font-cinzel text-brand-goldLight uppercase font-semibold mb-1.5">
-                  Category Title *
+                  Category Name / Title *
                 </label>
                 <input
                   type="text"
@@ -328,10 +370,12 @@ export default function CategoryManager({
                   />
                   <button
                     type="button"
+                    disabled={isUploading}
                     onClick={() => fileInputRef.current?.click()}
                     className="px-4 py-2 bg-brand-charcoal border border-brand-gold/60 hover:bg-brand-gold hover:text-brand-charcoal text-brand-gold text-xs font-cinzel tracking-wider rounded-lg transition-colors flex items-center gap-1.5 whitespace-nowrap"
                   >
-                    <Upload className="w-3.5 h-3.5" /> Upload File
+                    {isUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                    <span>{isUploading ? 'Uploading...' : 'Upload File'}</span>
                   </button>
                 </div>
 
@@ -370,12 +414,12 @@ export default function CategoryManager({
         </div>
       )}
 
-      {/* MODAL 2: CHANGE COVER IMAGE MODAL */}
-      {editCoverModal && (
+      {/* MODAL 2: FULL EDIT CATEGORY (NAME, TAG, BADGE, DESC & COVER IMAGE) */}
+      {editingCategory && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="max-w-md w-full bg-brand-darkCard border border-brand-gold/50 rounded-2xl p-6 sm:p-8 shadow-2xl relative">
+          <div className="max-w-xl w-full bg-brand-darkCard border border-brand-gold/50 rounded-2xl p-6 sm:p-8 shadow-2xl relative max-h-[90vh] overflow-y-auto">
             <button
-              onClick={() => setEditCoverModal(null)}
+              onClick={() => setEditingCategory(null)}
               className="absolute top-5 right-5 text-brand-muted hover:text-white"
             >
               <X className="w-6 h-6" />
@@ -383,75 +427,134 @@ export default function CategoryManager({
 
             <div className="mb-5">
               <span className="text-xs font-cinzel text-brand-gold uppercase tracking-widest font-semibold block mb-1">
-                UPDATE FRONT COVER
+                EDIT CATEGORY DETAILS
               </span>
-              <h3 className="font-cinzel text-xl text-white font-medium">
-                {editCoverModal.title}
+              <h3 className="font-cinzel text-2xl text-white font-medium">
+                Modify Category: {editingCategory.title}
               </h3>
               <p className="text-xs text-brand-muted mt-1">
-                Upload a new photo or paste an image URL to replace the front cover.
+                Update the category name, subtitle, description, or change the front cover photo.
               </p>
             </div>
 
-            <form onSubmit={handleSaveCoverImage} className="space-y-4">
+            <form onSubmit={handleSaveEditCategory} className="space-y-4">
               <div>
                 <label className="block text-xs font-cinzel text-brand-goldLight uppercase font-semibold mb-1.5">
-                  Image Source
+                  Category Name / Title *
                 </label>
-                <div className="flex gap-2">
+                <input
+                  type="text"
+                  required
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  placeholder="e.g. Weddings & Mandapam"
+                  className="w-full bg-brand-charcoal border border-brand-borderDark rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-brand-gold"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-cinzel text-brand-goldLight uppercase font-semibold mb-1.5">
+                    Tag / Subtitle
+                  </label>
                   <input
                     type="text"
-                    required
-                    value={newCoverUrl}
-                    onChange={(e) => setNewCoverUrl(e.target.value)}
+                    value={editTag}
+                    onChange={(e) => setEditTag(e.target.value)}
+                    placeholder="e.g. HERITAGE & CANDID"
+                    className="w-full bg-brand-charcoal border border-brand-borderDark rounded-lg px-4 py-2.5 text-xs text-white focus:outline-none focus:border-brand-gold"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-cinzel text-brand-goldLight uppercase font-semibold mb-1.5">
+                    Badge (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={editBadge}
+                    onChange={(e) => setEditBadge(e.target.value)}
+                    placeholder="e.g. SPECIALTY • ₹6,500"
+                    className="w-full bg-brand-charcoal border border-brand-borderDark rounded-lg px-4 py-2.5 text-xs text-white focus:outline-none focus:border-brand-gold"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-cinzel text-brand-goldLight uppercase font-semibold mb-1.5">
+                  Description
+                </label>
+                <textarea
+                  rows={2}
+                  value={editDesc}
+                  onChange={(e) => setEditDesc(e.target.value)}
+                  placeholder="Short description of this category..."
+                  className="w-full bg-brand-charcoal border border-brand-borderDark rounded-lg px-4 py-2 text-xs text-white focus:outline-none focus:border-brand-gold"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-cinzel text-brand-goldLight uppercase font-semibold mb-1.5">
+                  Front Cover Photo
+                </label>
+                <div className="flex gap-2 mb-2">
+                  <input
+                    type="text"
+                    value={editImage}
+                    onChange={(e) => {
+                      setEditImage(e.target.value);
+                      setEditPreview(e.target.value);
+                    }}
                     placeholder="https://..."
-                    className="flex-1 bg-brand-charcoal border border-brand-borderDark rounded-lg px-4 py-2.5 text-xs text-white focus:outline-none focus:border-brand-gold"
+                    className="flex-1 bg-brand-charcoal border border-brand-borderDark rounded-lg px-4 py-2 text-xs text-white focus:outline-none focus:border-brand-gold"
                   />
                   
                   <input
                     type="file"
-                    ref={coverFileInputRef}
+                    ref={editFileInputRef}
                     accept="image/*"
-                    onChange={handleCoverFileChange}
+                    onChange={handleEditFileChange}
                     className="hidden"
                   />
                   <button
                     type="button"
-                    onClick={() => coverFileInputRef.current?.click()}
+                    disabled={isUploading}
+                    onClick={() => editFileInputRef.current?.click()}
                     className="px-3 py-2 bg-brand-charcoal border border-brand-gold/60 text-brand-gold text-xs font-cinzel rounded-lg flex items-center gap-1 hover:bg-brand-gold hover:text-brand-charcoal transition-colors shrink-0"
                   >
-                    <Upload className="w-3.5 h-3.5" /> Upload
+                    {isUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                    <span>{isUploading ? 'Uploading...' : 'Upload'}</span>
                   </button>
                 </div>
+
+                {/* Live Preview */}
+                {editPreview && (
+                  <div className="h-40 rounded-xl overflow-hidden border border-brand-gold/40 relative">
+                    <img
+                      src={editPreview}
+                      alt="Cover Preview"
+                      className="w-full h-full object-cover"
+                    />
+                    <span className="absolute bottom-2 left-2 bg-black/80 text-[10px] text-brand-gold px-2 py-0.5 rounded">
+                      Front Cover Preview
+                    </span>
+                  </div>
+                )}
               </div>
 
-              {/* Live Preview */}
-              {newCoverUrl && (
-                <div className="h-44 rounded-xl overflow-hidden border border-brand-gold/40 relative">
-                  <img
-                    src={newCoverUrl}
-                    alt="New Cover Preview"
-                    className="w-full h-full object-cover"
-                  />
-                  <span className="absolute bottom-2 left-2 bg-black/80 text-[10px] text-brand-gold px-2 py-0.5 rounded">
-                    New Front Cover Preview
-                  </span>
-                </div>
-              )}
-
-              <div className="flex items-center justify-end gap-3 pt-3">
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-brand-borderDark">
                 <button
                   type="button"
-                  onClick={() => setEditCoverModal(null)}
+                  onClick={() => setEditingCategory(null)}
                   className="px-4 py-2 bg-brand-charcoal text-brand-muted hover:text-white text-xs font-cinzel rounded-lg"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-brand-gold text-brand-charcoal hover:bg-brand-goldHover font-cinzel text-xs font-bold uppercase rounded-lg shadow flex items-center gap-1.5"
+                  className="px-5 py-2.5 bg-brand-gold text-brand-charcoal hover:bg-brand-goldHover font-cinzel text-xs font-bold uppercase rounded-lg shadow flex items-center gap-1.5"
                 >
-                  <Check className="w-3.5 h-3.5" /> Update Cover
+                  <Check className="w-4 h-4" /> Save Category Updates
                 </button>
               </div>
             </form>

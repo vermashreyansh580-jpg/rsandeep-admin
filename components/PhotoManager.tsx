@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useState, useRef } from 'react';
-import { Plus, Trash2, Image as ImageIcon, Upload, X, Check, Star, Search, Maximize2, Layers } from 'lucide-react';
+import { Plus, Trash2, Image as ImageIcon, Upload, X, Check, Star, Search, Maximize2, Layers, Loader2 } from 'lucide-react';
 import { PhotoItem, CategoryItem } from '@/types/catalog';
+import { uploadImageFile } from '@/lib/catalogService';
 
 interface PhotoManagerProps {
   photos: PhotoItem[];
@@ -26,9 +27,11 @@ export default function PhotoManager({
   onSetAsCategoryCover,
 }: PhotoManagerProps) {
   const [isUploadOpen, setIsUploadOpen] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const [photoTitle, setPhotoTitle] = useState('');
   const [targetCategory, setTargetCategory] = useState(selectedCategory === 'ALL' ? (categories[0]?.id || 'WEDDINGS') : selectedCategory);
   const [photoUrl, setPhotoUrl] = useState('');
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [previewImages, setPreviewImages] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [lightboxPhoto, setLightboxPhoto] = useState<PhotoItem | null>(null);
@@ -42,14 +45,15 @@ export default function PhotoManager({
     return matchesCat && matchesSearch;
   });
 
-  // Handle multi-file upload
+  // Handle multi-file selection
   const handleMultipleFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    const newPreviews: string[] = [];
     const filesArray = Array.from(files);
+    setSelectedFiles((prev) => [...prev, ...filesArray]);
 
+    const newPreviews: string[] = [];
     let loadedCount = 0;
     filesArray.forEach((file) => {
       const reader = new FileReader();
@@ -67,43 +71,56 @@ export default function PhotoManager({
     });
   };
 
-  const handleUploadSubmit = (e: React.FormEvent) => {
+  const handleUploadSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsUploading(true);
 
-    const itemsToAdd: PhotoItem[] = [];
+    try {
+      const itemsToAdd: PhotoItem[] = [];
 
-    // If local files were selected
-    if (previewImages.length > 0) {
-      previewImages.forEach((imgData, idx) => {
+      // If local files were selected, upload to Firebase Storage or Base64
+      if (selectedFiles.length > 0) {
+        for (let i = 0; i < selectedFiles.length; i++) {
+          const file = selectedFiles[i];
+          const uploadedUrl = await uploadImageFile(file, `photos/${targetCategory}`);
+          itemsToAdd.push({
+            id: `PHOTO_${Date.now()}_${i}`,
+            title: photoTitle.trim()
+              ? (selectedFiles.length === 1 ? photoTitle.trim() : `${photoTitle.trim()} #${i + 1}`)
+              : `Studio Frame #${Date.now().toString().slice(-4)}_${i + 1}`,
+            category: targetCategory,
+            img: uploadedUrl,
+            date: new Date().toISOString().split('T')[0],
+          });
+        }
+      } else if (photoUrl.trim()) {
+        // Direct URL
         itemsToAdd.push({
-          id: `PHOTO_${Date.now()}_${idx}`,
-          title: photoTitle.trim() ? (previewImages.length === 1 ? photoTitle.trim() : `${photoTitle.trim()} #${idx + 1}`) : `Studio Frame #${Date.now().toString().slice(-4)}`,
+          id: `PHOTO_${Date.now()}`,
+          title: photoTitle.trim() || 'Master Wedding Portrait',
           category: targetCategory,
-          img: imgData,
+          img: photoUrl.trim(),
           date: new Date().toISOString().split('T')[0],
         });
-      });
-    } else if (photoUrl.trim()) {
-      // Direct URL
-      itemsToAdd.push({
-        id: `PHOTO_${Date.now()}`,
-        title: photoTitle.trim() || 'Master Wedding Portrait',
-        category: targetCategory,
-        img: photoUrl.trim(),
-        date: new Date().toISOString().split('T')[0],
-      });
-    }
+      }
 
-    if (itemsToAdd.length > 0) {
-      onAddMultiplePhotos(itemsToAdd);
-      setIsUploadOpen(false);
-      resetUploadForm();
+      if (itemsToAdd.length > 0) {
+        onAddMultiplePhotos(itemsToAdd);
+        setIsUploadOpen(false);
+        resetUploadForm();
+      }
+    } catch (err) {
+      console.error('Error during photo upload:', err);
+      alert('Upload failed. Please check network/files.');
+    } finally {
+      setIsUploading(false);
     }
   };
 
   const resetUploadForm = () => {
     setPhotoTitle('');
     setPhotoUrl('');
+    setSelectedFiles([]);
     setPreviewImages([]);
   };
 
@@ -349,7 +366,7 @@ export default function PhotoManager({
                     Click to select photos from device
                   </p>
                   <p className="text-[11px] text-brand-muted">
-                    Supports multiple JPG, PNG, WEBP files simultaneously
+                    Supports multiple JPG, PNG, WEBP files simultaneously (uploads to Cloud Storage)
                   </p>
                 </div>
 
@@ -380,7 +397,10 @@ export default function PhotoManager({
                         <img src={src} alt="Preview" className="w-full h-full object-cover" />
                         <button
                           type="button"
-                          onClick={() => setPreviewImages(previewImages.filter((_, i) => i !== idx))}
+                          onClick={() => {
+                            setPreviewImages(previewImages.filter((_, i) => i !== idx));
+                            setSelectedFiles(selectedFiles.filter((_, i) => i !== idx));
+                          }}
                           className="absolute top-1 right-1 bg-red-600 text-white rounded-full p-0.5"
                         >
                           <X className="w-3 h-3" />
@@ -401,10 +421,11 @@ export default function PhotoManager({
                 </button>
                 <button
                   type="submit"
-                  disabled={previewImages.length === 0 && !photoUrl.trim()}
+                  disabled={isUploading || (previewImages.length === 0 && !photoUrl.trim())}
                   className="px-6 py-2.5 bg-brand-gold text-brand-charcoal hover:bg-brand-goldHover disabled:opacity-50 font-cinzel text-xs tracking-wider uppercase font-bold rounded-lg shadow-lg flex items-center gap-2"
                 >
-                  <Check className="w-4 h-4" /> Save to Category
+                  {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                  <span>{isUploading ? 'Uploading to Cloud...' : 'Save to Category'}</span>
                 </button>
               </div>
             </form>
