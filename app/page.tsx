@@ -85,17 +85,23 @@ export default function AdminDashboard() {
   };
 
   // Photo Handlers
-  const handleAddPhoto = (photo: PhotoItem) => {
+  const handleAddPhoto = async (photo: PhotoItem) => {
     setPhotos((prev) => [photo, ...prev]);
-    localStorage.setItem('rsandeep_portfolio', JSON.stringify([photo, ...photos]));
-    syncPhotoToFirestore(photo);
+    try {
+      localStorage.setItem('rsandeep_portfolio', JSON.stringify([photo, ...photos]));
+    } catch (e) {}
+    await syncPhotoToFirestore(photo);
   };
 
-  const handleAddMultiplePhotos = (newPhotos: PhotoItem[]) => {
+  const handleAddMultiplePhotos = async (newPhotos: PhotoItem[]) => {
     setPhotos((prev) => [...newPhotos, ...prev]);
     const updated = [...newPhotos, ...photos];
-    localStorage.setItem('rsandeep_portfolio', JSON.stringify(updated));
-    newPhotos.forEach((p) => syncPhotoToFirestore(p));
+    try {
+      localStorage.setItem('rsandeep_portfolio', JSON.stringify(updated));
+    } catch (e) {}
+    for (const p of newPhotos) {
+      await syncPhotoToFirestore(p);
+    }
   };
 
   const handleDeletePhoto = (id: string) => {

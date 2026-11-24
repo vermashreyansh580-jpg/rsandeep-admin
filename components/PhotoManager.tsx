@@ -17,7 +17,8 @@ import {
   Camera,
   Clipboard,
   Link as LinkIcon,
-  HardDrive
+  HardDrive,
+  CheckCircle
 } from 'lucide-react';
 import { PhotoItem, CategoryItem } from '@/types/catalog';
 import { uploadImageFile } from '@/lib/catalogService';
@@ -56,6 +57,7 @@ export default function PhotoManager({
   const [searchQuery, setSearchQuery] = useState('');
   const [lightboxPhoto, setLightboxPhoto] = useState<PhotoItem | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [uploadSuccessMessage, setUploadSuccessMessage] = useState('');
 
   // Hidden Input Refs for different picker modes
   const galleryInputRef = useRef<HTMLInputElement>(null);
@@ -182,6 +184,8 @@ export default function PhotoManager({
         onAddMultiplePhotos(itemsToAdd);
         setIsUploadOpen(false);
         resetUploadForm();
+        setUploadSuccessMessage(`Successfully uploaded and synced ${itemsToAdd.length} photo(s) live to Client Website!`);
+        setTimeout(() => setUploadSuccessMessage(''), 6000);
       }
     } catch (err) {
       console.error('Error during photo upload:', err);
@@ -230,6 +234,21 @@ export default function PhotoManager({
           <Plus className="w-4 h-4" /> UPLOAD PHOTOS
         </button>
       </div>
+
+      {/* Cloud Sync Success Toast */}
+      {uploadSuccessMessage && (
+        <div className="bg-emerald-950/90 border border-emerald-500/60 text-emerald-300 px-5 py-3.5 rounded-xl flex items-center justify-between shadow-2xl animate-in fade-in duration-300">
+          <div className="flex items-center gap-3">
+            <CheckCircle className="w-5 h-5 text-emerald-400 shrink-0" />
+            <span className="text-xs font-cinzel font-bold tracking-wide">
+              {uploadSuccessMessage}
+            </span>
+          </div>
+          <span className="text-[10px] bg-emerald-900/60 text-emerald-200 px-2.5 py-1 rounded-full font-mono">
+            LIVE ON CLIENT SITE
+          </span>
+        </div>
+      )}
 
       {/* Filter Bar & Search */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-brand-charcoal p-4 rounded-xl border border-brand-borderDark">
