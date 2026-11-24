@@ -68,6 +68,9 @@ export default function CategoryManager({
 
   // Process a selected file for New Category
   const handleProcessCreateFile = async (file: File) => {
+    // Show instant preview in 0ms
+    const tempUrl = URL.createObjectURL(file);
+    setImagePreview(tempUrl);
     setIsUploading(true);
     try {
       const url = await uploadImageFile(file, 'categories');
@@ -83,6 +86,9 @@ export default function CategoryManager({
 
   // Process a selected file for Editing Category
   const handleProcessEditFile = async (file: File) => {
+    // Show instant preview in 0ms
+    const tempUrl = URL.createObjectURL(file);
+    setEditPreview(tempUrl);
     setIsUploading(true);
     try {
       const url = await uploadImageFile(file, 'categories');

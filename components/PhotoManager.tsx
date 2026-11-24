@@ -82,22 +82,9 @@ export default function PhotoManager({
 
     setSelectedFiles((prev) => [...prev, ...filesArray]);
 
-    const newPreviews: string[] = [];
-    let loadedCount = 0;
-    filesArray.forEach((file) => {
-      const reader = new FileReader();
-      reader.onload = (loadEvent) => {
-        const result = loadEvent.target?.result as string;
-        if (result) {
-          newPreviews.push(result);
-        }
-        loadedCount++;
-        if (loadedCount === filesArray.length) {
-          setPreviewImages((prev) => [...prev, ...newPreviews]);
-        }
-      };
-      reader.readAsDataURL(file);
-    });
+    // Instant zero-lag blob previews instead of heavy Base64 strings
+    const newPreviews = filesArray.map((file) => URL.createObjectURL(file));
+    setPreviewImages((prev) => [...prev, ...newPreviews]);
   };
 
   // Clipboard Paste Support (Ctrl+V)
@@ -156,14 +143,17 @@ export default function PhotoManager({
     try {
       const itemsToAdd: PhotoItem[] = [];
 
-      // If local files were selected, upload to Firebase Storage or Base64
+      // If local files were selected, optimize and upload concurrently in parallel
       if (selectedFiles.length > 0) {
-        for (let i = 0; i < selectedFiles.length; i++) {
-          const file = selectedFiles[i];
-          setUploadProgressText(`Uploading ${i + 1} of ${selectedFiles.length}...`);
+        setUploadProgressText(`Optimizing & uploading ${selectedFiles.length} photos...`);
+        let completed = 0;
+
+        const uploadPromises = selectedFiles.map(async (file, i) => {
           const uploadedUrl = await uploadImageFile(file, `photos/${targetCategory}`);
-          itemsToAdd.push({
-            id: `PHOTO_${Date.now()}_${i}`,
+          completed++;
+          setUploadProgressText(`Uploaded ${completed} of ${selectedFiles.length}...`);
+          return {
+            id: `PHOTO_${Date.now()}_${i}_${Math.random().toString(36).substring(2, 6)}`,
             title: photoTitle.trim()
               ? selectedFiles.length === 1
                 ? photoTitle.trim()
@@ -172,8 +162,11 @@ export default function PhotoManager({
             category: targetCategory,
             img: uploadedUrl,
             date: new Date().toISOString().split('T')[0],
-          });
-        }
+          };
+        });
+
+        const results = await Promise.all(uploadPromises);
+        itemsToAdd.push(...results);
       } else if (photoUrl.trim()) {
         // Direct URL
         itemsToAdd.push({
@@ -200,6 +193,9 @@ export default function PhotoManager({
   };
 
   const resetUploadForm = () => {
+    previewImages.forEach((url) => {
+      if (url.startsWith('blob:')) URL.revokeObjectURL(url);
+    });
     setPhotoTitle('');
     setPhotoUrl('');
     setSelectedFiles([]);
