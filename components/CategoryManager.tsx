@@ -1,7 +1,22 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
-import { Plus, Trash2, Edit3, Image as ImageIcon, Sparkles, ArrowRight, Upload, X, Check, Loader2 } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import {
+  Plus,
+  Trash2,
+  Edit3,
+  Image as ImageIcon,
+  Sparkles,
+  ArrowRight,
+  Upload,
+  X,
+  Check,
+  Loader2,
+  FolderOpen,
+  Camera,
+  Clipboard,
+  Link as LinkIcon
+} from 'lucide-react';
 import { CategoryItem } from '@/types/catalog';
 import { uploadImageFile } from '@/lib/catalogService';
 
@@ -42,42 +57,71 @@ export default function CategoryManager({
   const [editImage, setEditImage] = useState('');
   const [editPreview, setEditPreview] = useState('');
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const editFileInputRef = useRef<HTMLInputElement>(null);
+  // Hidden Input Refs for different picker modes
+  const createFileManagerRef = useRef<HTMLInputElement>(null);
+  const createGalleryRef = useRef<HTMLInputElement>(null);
+  const createCameraRef = useRef<HTMLInputElement>(null);
 
-  // Handle local file selection for new category
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setIsUploading(true);
-      try {
-        const url = await uploadImageFile(file, 'categories');
-        setNewImage(url);
-        setImagePreview(url);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setIsUploading(false);
-      }
+  const editFileManagerRef = useRef<HTMLInputElement>(null);
+  const editGalleryRef = useRef<HTMLInputElement>(null);
+  const editCameraRef = useRef<HTMLInputElement>(null);
+
+  // Process a selected file for New Category
+  const handleProcessCreateFile = async (file: File) => {
+    setIsUploading(true);
+    try {
+      const url = await uploadImageFile(file, 'categories');
+      setNewImage(url);
+      setImagePreview(url);
+    } catch (err) {
+      console.error(err);
+      alert('Upload failed. Please try again.');
+    } finally {
+      setIsUploading(false);
     }
   };
 
-  // Handle local file selection for editing category
-  const handleEditFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setIsUploading(true);
-      try {
-        const url = await uploadImageFile(file, 'categories');
-        setEditImage(url);
-        setEditPreview(url);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setIsUploading(false);
-      }
+  // Process a selected file for Editing Category
+  const handleProcessEditFile = async (file: File) => {
+    setIsUploading(true);
+    try {
+      const url = await uploadImageFile(file, 'categories');
+      setEditImage(url);
+      setEditPreview(url);
+    } catch (err) {
+      console.error(err);
+      alert('Upload failed. Please try again.');
+    } finally {
+      setIsUploading(false);
     }
   };
+
+  // Clipboard Paste Support (Ctrl+V) for modals
+  useEffect(() => {
+    if (!isCreateOpen && !editingCategory) return;
+
+    const handlePaste = (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.indexOf('image') !== -1) {
+          const blob = items[i].getAsFile();
+          if (blob) {
+            if (isCreateOpen) {
+              handleProcessCreateFile(blob);
+            } else if (editingCategory) {
+              handleProcessEditFile(blob);
+            }
+            break;
+          }
+        }
+      }
+    };
+
+    window.addEventListener('paste', handlePaste);
+    return () => window.removeEventListener('paste', handlePaste);
+  }, [isCreateOpen, editingCategory]);
 
   const handleCreateSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -95,7 +139,9 @@ export default function CategoryManager({
       tag: newTag.trim() || 'FEATURED COLLECTION',
       desc: newDesc.trim() || 'Curated high-definition master frames and cinematic moments.',
       badge: newBadge.trim() || undefined,
-      image: newImage.trim() || 'https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&w=800&q=80',
+      image:
+        newImage.trim() ||
+        'https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&w=800&q=80',
       frames: '0 Master Frames',
     };
 
@@ -142,7 +188,6 @@ export default function CategoryManager({
 
   return (
     <div className="space-y-8">
-      
       {/* Top Banner & Create Action */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-brand-darkCard p-6 rounded-2xl border border-brand-borderDark shadow-xl">
         <div>
@@ -184,7 +229,7 @@ export default function CategoryManager({
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-brand-charcoal via-brand-charcoal/20 to-transparent" />
-                  
+
                   {/* Category ID Badge */}
                   <span className="absolute top-3 left-3 bg-brand-charcoal/90 text-brand-gold text-[10px] font-mono px-2 py-1 rounded border border-brand-gold/40">
                     ID: {cat.id}
@@ -212,9 +257,7 @@ export default function CategoryManager({
                     {cat.tag || 'PORTFOLIO COLLECTION'}
                   </span>
                   <div className="flex items-center justify-between gap-2 mb-1">
-                    <h3 className="font-serif text-xl text-white font-medium">
-                      {cat.title}
-                    </h3>
+                    <h3 className="font-serif text-xl text-white font-medium">{cat.title}</h3>
                     <button
                       onClick={() => openEditModal(cat)}
                       className="text-brand-muted hover:text-brand-gold p-1"
@@ -223,11 +266,11 @@ export default function CategoryManager({
                       <Edit3 className="w-3.5 h-3.5" />
                     </button>
                   </div>
-                  <p className="text-xs text-brand-muted line-clamp-2 mb-3">
-                    {cat.desc}
-                  </p>
+                  <p className="text-xs text-brand-muted line-clamp-2 mb-3">{cat.desc}</p>
                   <div className="flex items-center justify-between text-xs text-brand-muted pt-3 border-t border-brand-borderDark/60">
-                    <span>Total Photos: <strong className="text-brand-goldLight">{count} Frames</strong></span>
+                    <span>
+                      Total Photos: <strong className="text-brand-goldLight">{count} Frames</strong>
+                    </span>
                   </div>
                 </div>
               </div>
@@ -251,7 +294,11 @@ export default function CategoryManager({
 
                 <button
                   onClick={() => {
-                    if (confirm(`Are you sure you want to delete category "${cat.title}" and all its photos?`)) {
+                    if (
+                      confirm(
+                        `Are you sure you want to delete category "${cat.title}" and all its photos?`
+                      )
+                    ) {
                       onDeleteCategory(cat.id);
                     }
                   }}
@@ -261,7 +308,6 @@ export default function CategoryManager({
                   <Trash2 className="w-4 h-4" />
                 </button>
               </div>
-
             </div>
           );
         })}
@@ -269,8 +315,8 @@ export default function CategoryManager({
 
       {/* MODAL 1: CREATE CATEGORY MODAL */}
       {isCreateOpen && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="max-w-xl w-full bg-brand-darkCard border border-brand-gold/50 rounded-2xl p-6 sm:p-8 shadow-2xl relative max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="max-w-2xl w-full bg-brand-darkCard border border-brand-gold/50 rounded-2xl p-6 sm:p-8 shadow-2xl relative max-h-[90vh] overflow-y-auto">
             <button
               onClick={() => setIsCreateOpen(false)}
               className="absolute top-5 right-5 text-brand-muted hover:text-white"
@@ -282,9 +328,7 @@ export default function CategoryManager({
               <span className="text-xs font-cinzel text-brand-gold uppercase tracking-widest font-semibold block mb-1">
                 NEW STUDIO SECTION
               </span>
-              <h3 className="font-cinzel text-2xl text-white font-medium">
-                Create New Category
-              </h3>
+              <h3 className="font-cinzel text-2xl text-white font-medium">Create New Category</h3>
             </div>
 
             <form onSubmit={handleCreateSubmit} className="space-y-5">
@@ -345,11 +389,65 @@ export default function CategoryManager({
 
               {/* Front Cover Image Picker */}
               <div>
-                <label className="block text-xs font-cinzel text-brand-goldLight uppercase font-semibold mb-1.5">
-                  Front Cover Image *
+                <label className="block text-xs font-cinzel text-brand-goldLight uppercase font-semibold mb-2">
+                  Front Cover Photo — Choose Source:
                 </label>
-                
-                <div className="flex gap-2 mb-3">
+
+                {/* Hidden Inputs for Pickers */}
+                <input
+                  type="file"
+                  ref={createFileManagerRef}
+                  accept="*/*"
+                  onChange={(e) => e.target.files?.[0] && handleProcessCreateFile(e.target.files[0])}
+                  className="hidden"
+                />
+                <input
+                  type="file"
+                  ref={createGalleryRef}
+                  accept="image/*, .jpg, .jpeg, .png, .webp, .heic, .heif, .jfif, .avif"
+                  onChange={(e) => e.target.files?.[0] && handleProcessCreateFile(e.target.files[0])}
+                  className="hidden"
+                />
+                <input
+                  type="file"
+                  ref={createCameraRef}
+                  accept="image/*"
+                  capture="environment"
+                  onChange={(e) => e.target.files?.[0] && handleProcessCreateFile(e.target.files[0])}
+                  className="hidden"
+                />
+
+                <div className="grid grid-cols-3 gap-2.5 mb-3">
+                  <button
+                    type="button"
+                    onClick={() => createFileManagerRef.current?.click()}
+                    className="p-3 bg-brand-charcoal hover:bg-brand-darkerCard border border-brand-gold/40 hover:border-brand-gold rounded-lg flex flex-col items-center justify-center gap-1 text-center transition-all shadow"
+                  >
+                    <FolderOpen className="w-4 h-4 text-brand-gold" />
+                    <span className="text-[11px] font-cinzel font-semibold text-white">File Manager</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => createGalleryRef.current?.click()}
+                    className="p-3 bg-brand-charcoal hover:bg-brand-darkerCard border border-brand-gold/40 hover:border-brand-gold rounded-lg flex flex-col items-center justify-center gap-1 text-center transition-all shadow"
+                  >
+                    <ImageIcon className="w-4 h-4 text-brand-gold" />
+                    <span className="text-[11px] font-cinzel font-semibold text-white">Gallery / Photos</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => createCameraRef.current?.click()}
+                    className="p-3 bg-brand-charcoal hover:bg-brand-darkerCard border border-brand-gold/40 hover:border-brand-gold rounded-lg flex flex-col items-center justify-center gap-1 text-center transition-all shadow"
+                  >
+                    <Camera className="w-4 h-4 text-brand-gold" />
+                    <span className="text-[11px] font-cinzel font-semibold text-white">Camera</span>
+                  </button>
+                </div>
+
+                <div className="relative">
+                  <LinkIcon className="w-4 h-4 text-brand-gold absolute left-3 top-1/2 -translate-y-1/2" />
                   <input
                     type="text"
                     value={newImage}
@@ -357,36 +455,15 @@ export default function CategoryManager({
                       setNewImage(e.target.value);
                       setImagePreview(e.target.value);
                     }}
-                    placeholder="Paste image URL (https://...)"
-                    className="flex-1 bg-brand-charcoal border border-brand-borderDark rounded-lg px-4 py-2.5 text-xs text-white focus:outline-none focus:border-brand-gold"
+                    placeholder="Or paste direct image URL (https://...)"
+                    className="w-full bg-brand-charcoal border border-brand-borderDark rounded-lg pl-9 pr-4 py-2.5 text-xs text-white focus:outline-none focus:border-brand-gold"
                   />
-                  
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    accept="image/*"
-                    onChange={handleFileChange}
-                    className="hidden"
-                  />
-                  <button
-                    type="button"
-                    disabled={isUploading}
-                    onClick={() => fileInputRef.current?.click()}
-                    className="px-4 py-2 bg-brand-charcoal border border-brand-gold/60 hover:bg-brand-gold hover:text-brand-charcoal text-brand-gold text-xs font-cinzel tracking-wider rounded-lg transition-colors flex items-center gap-1.5 whitespace-nowrap"
-                  >
-                    {isUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
-                    <span>{isUploading ? 'Uploading...' : 'Upload File'}</span>
-                  </button>
                 </div>
 
                 {/* Preview */}
                 {imagePreview && (
-                  <div className="h-40 rounded-xl overflow-hidden border border-brand-gold/40 relative">
-                    <img
-                      src={imagePreview}
-                      alt="Cover Preview"
-                      className="w-full h-full object-cover"
-                    />
+                  <div className="h-40 rounded-xl overflow-hidden border border-brand-gold/40 relative mt-3">
+                    <img src={imagePreview} alt="Cover Preview" className="w-full h-full object-cover" />
                     <span className="absolute bottom-2 left-2 bg-black/80 text-[10px] text-brand-gold px-2 py-1 rounded">
                       Front Cover Preview
                     </span>
@@ -404,9 +481,11 @@ export default function CategoryManager({
                 </button>
                 <button
                   type="submit"
-                  className="px-6 py-2.5 bg-brand-gold text-brand-charcoal hover:bg-brand-goldHover font-cinzel text-xs tracking-wider uppercase font-bold rounded-lg shadow-lg flex items-center gap-2"
+                  disabled={isUploading}
+                  className="px-6 py-2.5 bg-brand-gold text-brand-charcoal hover:bg-brand-goldHover disabled:opacity-50 font-cinzel text-xs tracking-wider uppercase font-bold rounded-lg shadow-lg flex items-center gap-2"
                 >
-                  <Check className="w-4 h-4" /> Save Category
+                  {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                  <span>{isUploading ? 'Uploading Image...' : 'Save Category'}</span>
                 </button>
               </div>
             </form>
@@ -416,8 +495,8 @@ export default function CategoryManager({
 
       {/* MODAL 2: FULL EDIT CATEGORY (NAME, TAG, BADGE, DESC & COVER IMAGE) */}
       {editingCategory && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="max-w-xl w-full bg-brand-darkCard border border-brand-gold/50 rounded-2xl p-6 sm:p-8 shadow-2xl relative max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="max-w-2xl w-full bg-brand-darkCard border border-brand-gold/50 rounded-2xl p-6 sm:p-8 shadow-2xl relative max-h-[90vh] overflow-y-auto">
             <button
               onClick={() => setEditingCategory(null)}
               className="absolute top-5 right-5 text-brand-muted hover:text-white"
@@ -433,7 +512,7 @@ export default function CategoryManager({
                 Modify Category: {editingCategory.title}
               </h3>
               <p className="text-xs text-brand-muted mt-1">
-                Update the category name, subtitle, description, or change the front cover photo.
+                Update the category name, subtitle, description, or change the front cover photo from any source.
               </p>
             </div>
 
@@ -494,10 +573,65 @@ export default function CategoryManager({
               </div>
 
               <div>
-                <label className="block text-xs font-cinzel text-brand-goldLight uppercase font-semibold mb-1.5">
-                  Front Cover Photo
+                <label className="block text-xs font-cinzel text-brand-goldLight uppercase font-semibold mb-2">
+                  Front Cover Photo — Choose Source:
                 </label>
-                <div className="flex gap-2 mb-2">
+
+                {/* Hidden Inputs for Pickers */}
+                <input
+                  type="file"
+                  ref={editFileManagerRef}
+                  accept="*/*"
+                  onChange={(e) => e.target.files?.[0] && handleProcessEditFile(e.target.files[0])}
+                  className="hidden"
+                />
+                <input
+                  type="file"
+                  ref={editGalleryRef}
+                  accept="image/*, .jpg, .jpeg, .png, .webp, .heic, .heif, .jfif, .avif"
+                  onChange={(e) => e.target.files?.[0] && handleProcessEditFile(e.target.files[0])}
+                  className="hidden"
+                />
+                <input
+                  type="file"
+                  ref={editCameraRef}
+                  accept="image/*"
+                  capture="environment"
+                  onChange={(e) => e.target.files?.[0] && handleProcessEditFile(e.target.files[0])}
+                  className="hidden"
+                />
+
+                <div className="grid grid-cols-3 gap-2.5 mb-3">
+                  <button
+                    type="button"
+                    onClick={() => editFileManagerRef.current?.click()}
+                    className="p-3 bg-brand-charcoal hover:bg-brand-darkerCard border border-brand-gold/40 hover:border-brand-gold rounded-lg flex flex-col items-center justify-center gap-1 text-center transition-all shadow"
+                  >
+                    <FolderOpen className="w-4 h-4 text-brand-gold" />
+                    <span className="text-[11px] font-cinzel font-semibold text-white">File Manager</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => editGalleryRef.current?.click()}
+                    className="p-3 bg-brand-charcoal hover:bg-brand-darkerCard border border-brand-gold/40 hover:border-brand-gold rounded-lg flex flex-col items-center justify-center gap-1 text-center transition-all shadow"
+                  >
+                    <ImageIcon className="w-4 h-4 text-brand-gold" />
+                    <span className="text-[11px] font-cinzel font-semibold text-white">Gallery / Photos</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => editCameraRef.current?.click()}
+                    className="p-3 bg-brand-charcoal hover:bg-brand-darkerCard border border-brand-gold/40 hover:border-brand-gold rounded-lg flex flex-col items-center justify-center gap-1 text-center transition-all shadow"
+                  >
+                    <Camera className="w-4 h-4 text-brand-gold" />
+                    <span className="text-[11px] font-cinzel font-semibold text-white">Camera</span>
+                  </button>
+                </div>
+
+                <div className="relative">
+                  <LinkIcon className="w-4 h-4 text-brand-gold absolute left-3 top-1/2 -translate-y-1/2" />
                   <input
                     type="text"
                     value={editImage}
@@ -505,36 +639,15 @@ export default function CategoryManager({
                       setEditImage(e.target.value);
                       setEditPreview(e.target.value);
                     }}
-                    placeholder="https://..."
-                    className="flex-1 bg-brand-charcoal border border-brand-borderDark rounded-lg px-4 py-2 text-xs text-white focus:outline-none focus:border-brand-gold"
+                    placeholder="Or paste direct image URL (https://...)"
+                    className="w-full bg-brand-charcoal border border-brand-borderDark rounded-lg pl-9 pr-4 py-2.5 text-xs text-white focus:outline-none focus:border-brand-gold"
                   />
-                  
-                  <input
-                    type="file"
-                    ref={editFileInputRef}
-                    accept="image/*"
-                    onChange={handleEditFileChange}
-                    className="hidden"
-                  />
-                  <button
-                    type="button"
-                    disabled={isUploading}
-                    onClick={() => editFileInputRef.current?.click()}
-                    className="px-3 py-2 bg-brand-charcoal border border-brand-gold/60 text-brand-gold text-xs font-cinzel rounded-lg flex items-center gap-1 hover:bg-brand-gold hover:text-brand-charcoal transition-colors shrink-0"
-                  >
-                    {isUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
-                    <span>{isUploading ? 'Uploading...' : 'Upload'}</span>
-                  </button>
                 </div>
 
                 {/* Live Preview */}
                 {editPreview && (
-                  <div className="h-40 rounded-xl overflow-hidden border border-brand-gold/40 relative">
-                    <img
-                      src={editPreview}
-                      alt="Cover Preview"
-                      className="w-full h-full object-cover"
-                    />
+                  <div className="h-40 rounded-xl overflow-hidden border border-brand-gold/40 relative mt-3">
+                    <img src={editPreview} alt="Cover Preview" className="w-full h-full object-cover" />
                     <span className="absolute bottom-2 left-2 bg-black/80 text-[10px] text-brand-gold px-2 py-0.5 rounded">
                       Front Cover Preview
                     </span>
@@ -552,16 +665,17 @@ export default function CategoryManager({
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 bg-brand-gold text-brand-charcoal hover:bg-brand-goldHover font-cinzel text-xs font-bold uppercase rounded-lg shadow flex items-center gap-1.5"
+                  disabled={isUploading}
+                  className="px-5 py-2.5 bg-brand-gold text-brand-charcoal hover:bg-brand-goldHover disabled:opacity-50 font-cinzel text-xs font-bold uppercase rounded-lg shadow flex items-center gap-1.5"
                 >
-                  <Check className="w-4 h-4" /> Save Category Updates
+                  {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                  <span>{isUploading ? 'Uploading Image...' : 'Save Category Updates'}</span>
                 </button>
               </div>
             </form>
           </div>
         </div>
       )}
-
     </div>
   );
 }

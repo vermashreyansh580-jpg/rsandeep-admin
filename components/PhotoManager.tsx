@@ -1,7 +1,24 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
-import { Plus, Trash2, Image as ImageIcon, Upload, X, Check, Star, Search, Maximize2, Layers, Loader2 } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import {
+  Plus,
+  Trash2,
+  Image as ImageIcon,
+  Upload,
+  X,
+  Check,
+  Star,
+  Search,
+  Maximize2,
+  Layers,
+  Loader2,
+  FolderOpen,
+  Camera,
+  Clipboard,
+  Link as LinkIcon,
+  HardDrive
+} from 'lucide-react';
 import { PhotoItem, CategoryItem } from '@/types/catalog';
 import { uploadImageFile } from '@/lib/catalogService';
 
@@ -28,29 +45,41 @@ export default function PhotoManager({
 }: PhotoManagerProps) {
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgressText, setUploadProgressText] = useState('');
   const [photoTitle, setPhotoTitle] = useState('');
-  const [targetCategory, setTargetCategory] = useState(selectedCategory === 'ALL' ? (categories[0]?.id || 'WEDDINGS') : selectedCategory);
+  const [targetCategory, setTargetCategory] = useState(
+    selectedCategory === 'ALL' ? (categories[0]?.id || 'WEDDINGS') : selectedCategory
+  );
   const [photoUrl, setPhotoUrl] = useState('');
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [previewImages, setPreviewImages] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [lightboxPhoto, setLightboxPhoto] = useState<PhotoItem | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  // Hidden Input Refs for different picker modes
+  const galleryInputRef = useRef<HTMLInputElement>(null);
+  const fileManagerInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
 
   // Filter photos
   const filteredPhotos = photos.filter((p) => {
     const matchesCat = selectedCategory === 'ALL' || p.category === selectedCategory;
-    const matchesSearch = !searchQuery.trim() || p.title.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesSearch =
+      !searchQuery.trim() || p.title.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesCat && matchesSearch;
   });
 
-  // Handle multi-file selection
-  const handleMultipleFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
+  // Universal File Processor (Works for Gallery, File Manager, SD Card, Drag-Drop, Clipboard)
+  const processFiles = (files: FileList | File[]) => {
+    const filesArray = Array.from(files).filter(
+      (f) =>
+        f.type.startsWith('image/') ||
+        /\.(jpg|jpeg|png|webp|heic|heif|jfif|avif|bmp|tiff|raw|dng|cr2|nef)$/i.test(f.name)
+    );
 
-    const filesArray = Array.from(files);
+    if (filesArray.length === 0) return;
+
     setSelectedFiles((prev) => [...prev, ...filesArray]);
 
     const newPreviews: string[] = [];
@@ -71,6 +100,55 @@ export default function PhotoManager({
     });
   };
 
+  // Clipboard Paste Support (Ctrl+V)
+  useEffect(() => {
+    if (!isUploadOpen) return;
+
+    const handlePaste = (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+
+      const pastedFiles: File[] = [];
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.indexOf('image') !== -1) {
+          const blob = items[i].getAsFile();
+          if (blob) {
+            pastedFiles.push(blob);
+          }
+        }
+      }
+
+      if (pastedFiles.length > 0) {
+        processFiles(pastedFiles);
+      }
+    };
+
+    window.addEventListener('paste', handlePaste);
+    return () => window.removeEventListener('paste', handlePaste);
+  }, [isUploadOpen]);
+
+  // Drag and Drop Handlers
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      processFiles(e.dataTransfer.files);
+    }
+  };
+
   const handleUploadSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsUploading(true);
@@ -82,11 +160,14 @@ export default function PhotoManager({
       if (selectedFiles.length > 0) {
         for (let i = 0; i < selectedFiles.length; i++) {
           const file = selectedFiles[i];
+          setUploadProgressText(`Uploading ${i + 1} of ${selectedFiles.length}...`);
           const uploadedUrl = await uploadImageFile(file, `photos/${targetCategory}`);
           itemsToAdd.push({
             id: `PHOTO_${Date.now()}_${i}`,
             title: photoTitle.trim()
-              ? (selectedFiles.length === 1 ? photoTitle.trim() : `${photoTitle.trim()} #${i + 1}`)
+              ? selectedFiles.length === 1
+                ? photoTitle.trim()
+                : `${photoTitle.trim()} #${i + 1}`
               : `Studio Frame #${Date.now().toString().slice(-4)}_${i + 1}`,
             category: targetCategory,
             img: uploadedUrl,
@@ -114,6 +195,7 @@ export default function PhotoManager({
       alert('Upload failed. Please check network/files.');
     } finally {
       setIsUploading(false);
+      setUploadProgressText('');
     }
   };
 
@@ -126,7 +208,6 @@ export default function PhotoManager({
 
   return (
     <div className="space-y-8">
-      
       {/* Top Banner & Upload Action */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-brand-darkCard p-6 rounded-2xl border border-brand-borderDark shadow-xl">
         <div>
@@ -137,13 +218,15 @@ export default function PhotoManager({
             Photo Gallery Manager
           </h2>
           <p className="text-xs text-brand-muted mt-1">
-            Add unlimited client photos to categories, delete unwanted frames, or set any photo as cover.
+            Upload from Phone Gallery, File Manager, SD Card, or paste directly.
           </p>
         </div>
 
         <button
           onClick={() => {
-            setTargetCategory(selectedCategory === 'ALL' ? (categories[0]?.id || 'WEDDINGS') : selectedCategory);
+            setTargetCategory(
+              selectedCategory === 'ALL' ? (categories[0]?.id || 'WEDDINGS') : selectedCategory
+            );
             setIsUploadOpen(true);
           }}
           className="flex items-center gap-2 px-5 py-3 bg-brand-gold text-brand-charcoal hover:bg-brand-goldHover font-cinzel text-xs tracking-wider uppercase font-bold rounded-lg shadow-xl transition-all self-start sm:self-auto hover:scale-105"
@@ -206,11 +289,13 @@ export default function PhotoManager({
             No Photos Found in this Category
           </h3>
           <p className="text-xs text-brand-muted mb-6">
-            Upload new high-resolution frames to populate this portfolio.
+            Upload new high-resolution frames from Gallery or File Manager.
           </p>
           <button
             onClick={() => {
-              setTargetCategory(selectedCategory === 'ALL' ? (categories[0]?.id || 'WEDDINGS') : selectedCategory);
+              setTargetCategory(
+                selectedCategory === 'ALL' ? (categories[0]?.id || 'WEDDINGS') : selectedCategory
+              );
               setIsUploadOpen(true);
             }}
             className="px-5 py-2.5 bg-brand-gold text-brand-charcoal font-cinzel text-xs font-bold uppercase rounded-lg shadow inline-flex items-center gap-1.5"
@@ -233,7 +318,7 @@ export default function PhotoManager({
                   onClick={() => setLightboxPhoto(photo)}
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                 />
-                
+
                 {/* Category Badge */}
                 <span className="absolute top-2 left-2 bg-brand-charcoal/90 text-brand-gold text-[9px] font-cinzel font-semibold px-2 py-0.5 rounded border border-brand-gold/30">
                   {photo.category}
@@ -253,7 +338,10 @@ export default function PhotoManager({
 
               {/* Photo Details & Actions */}
               <div className="p-3 bg-brand-darkCard">
-                <h4 className="text-xs font-serif text-white font-medium truncate mb-2" title={photo.title}>
+                <h4
+                  className="text-xs font-serif text-white font-medium truncate mb-2"
+                  title={photo.title}
+                >
                   {photo.title}
                 </h4>
 
@@ -284,16 +372,15 @@ export default function PhotoManager({
                   </button>
                 </div>
               </div>
-
             </div>
           ))}
         </div>
       )}
 
-      {/* MODAL: UPLOAD PHOTOS MODAL */}
+      {/* MODAL: UNIVERSAL UPLOAD PHOTOS MODAL */}
       {isUploadOpen && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="max-w-xl w-full bg-brand-darkCard border border-brand-gold/50 rounded-2xl p-6 sm:p-8 shadow-2xl relative max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="max-w-2xl w-full bg-brand-darkCard border border-brand-gold/50 rounded-2xl p-6 sm:p-8 shadow-2xl relative max-h-[90vh] overflow-y-auto">
             <button
               onClick={() => setIsUploadOpen(false)}
               className="absolute top-5 right-5 text-brand-muted hover:text-white"
@@ -308,9 +395,12 @@ export default function PhotoManager({
               <h3 className="font-cinzel text-2xl text-white font-medium">
                 Upload Photos to Category
               </h3>
+              <p className="text-xs text-brand-muted mt-1">
+                Choose photos from your Phone Gallery, File Manager, SD Card, Camera, or Drag & Drop.
+              </p>
             </div>
 
-            <form onSubmit={handleUploadSubmit} className="space-y-5">
+            <form onSubmit={handleUploadSubmit} className="space-y-6">
               <div>
                 <label className="block text-xs font-cinzel text-brand-goldLight uppercase font-semibold mb-1.5">
                   Select Target Category *
@@ -330,7 +420,7 @@ export default function PhotoManager({
 
               <div>
                 <label className="block text-xs font-cinzel text-brand-goldLight uppercase font-semibold mb-1.5">
-                  Photo Title / Caption (Optional)
+                  Photo Title / Series Name (Optional)
                 </label>
                 <input
                   type="text"
@@ -341,59 +431,141 @@ export default function PhotoManager({
                 />
               </div>
 
-              {/* Upload Source: Multi-file or URL */}
+              {/* Hidden System Pickers */}
+              {/* 1. Universal / File Manager Picker (All files / SD Card / Internal memory) */}
+              <input
+                type="file"
+                multiple
+                ref={fileManagerInputRef}
+                accept="*/*"
+                onChange={(e) => e.target.files && processFiles(e.target.files)}
+                className="hidden"
+              />
+
+              {/* 2. Gallery / Photos Picker */}
+              <input
+                type="file"
+                multiple
+                ref={galleryInputRef}
+                accept="image/*, .jpg, .jpeg, .png, .webp, .heic, .heif, .jfif, .avif, .bmp, .tiff"
+                onChange={(e) => e.target.files && processFiles(e.target.files)}
+                className="hidden"
+              />
+
+              {/* 3. Camera Direct */}
+              <input
+                type="file"
+                ref={cameraInputRef}
+                accept="image/*"
+                capture="environment"
+                onChange={(e) => e.target.files && processFiles(e.target.files)}
+                className="hidden"
+              />
+
+              {/* Multi-Source Picker Buttons */}
               <div>
-                <label className="block text-xs font-cinzel text-brand-goldLight uppercase font-semibold mb-1.5">
-                  Upload Image Files or Paste URL
+                <label className="block text-xs font-cinzel text-brand-goldLight uppercase font-semibold mb-2">
+                  Choose Where To Upload From:
                 </label>
 
-                {/* Drag and Drop Zone */}
-                <input
-                  type="file"
-                  multiple
-                  ref={fileInputRef}
-                  accept="image/*"
-                  onChange={handleMultipleFiles}
-                  className="hidden"
-                />
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
+                  {/* Option 1: File Manager / Internal Storage */}
+                  <button
+                    type="button"
+                    onClick={() => fileManagerInputRef.current?.click()}
+                    className="p-3.5 bg-brand-charcoal hover:bg-brand-darkerCard border border-brand-gold/40 hover:border-brand-gold rounded-xl flex flex-col items-center justify-center gap-1.5 text-center transition-all group shadow"
+                  >
+                    <FolderOpen className="w-5 h-5 text-brand-gold group-hover:scale-110 transition-transform" />
+                    <span className="text-xs font-cinzel font-semibold text-white">File Manager</span>
+                    <span className="text-[10px] text-brand-muted">SD Card / Files App</span>
+                  </button>
 
+                  {/* Option 2: Phone Gallery */}
+                  <button
+                    type="button"
+                    onClick={() => galleryInputRef.current?.click()}
+                    className="p-3.5 bg-brand-charcoal hover:bg-brand-darkerCard border border-brand-gold/40 hover:border-brand-gold rounded-xl flex flex-col items-center justify-center gap-1.5 text-center transition-all group shadow"
+                  >
+                    <ImageIcon className="w-5 h-5 text-brand-gold group-hover:scale-110 transition-transform" />
+                    <span className="text-xs font-cinzel font-semibold text-white">Photo Gallery</span>
+                    <span className="text-[10px] text-brand-muted">Photos / Albums</span>
+                  </button>
+
+                  {/* Option 3: Live Camera */}
+                  <button
+                    type="button"
+                    onClick={() => cameraInputRef.current?.click()}
+                    className="p-3.5 bg-brand-charcoal hover:bg-brand-darkerCard border border-brand-gold/40 hover:border-brand-gold rounded-xl flex flex-col items-center justify-center gap-1.5 text-center transition-all group shadow col-span-2 sm:col-span-1"
+                  >
+                    <Camera className="w-5 h-5 text-brand-gold group-hover:scale-110 transition-transform" />
+                    <span className="text-xs font-cinzel font-semibold text-white">Camera Snap</span>
+                    <span className="text-[10px] text-brand-muted">Instant Backstage Photo</span>
+                  </button>
+                </div>
+
+                {/* Drag and Drop Zone */}
                 <div
-                  onClick={() => fileInputRef.current?.click()}
-                  className="border-2 border-dashed border-brand-gold/40 hover:border-brand-gold bg-brand-charcoal/50 rounded-xl p-8 text-center cursor-pointer transition-all hover:bg-brand-charcoal"
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
+                  onClick={() => fileManagerInputRef.current?.click()}
+                  className={`border-2 border-dashed ${
+                    isDragging ? 'border-brand-gold bg-brand-gold/15 scale-[1.01]' : 'border-brand-borderDark hover:border-brand-gold/60 bg-brand-charcoal/50'
+                  } rounded-xl p-6 text-center cursor-pointer transition-all`}
                 >
-                  <Upload className="w-8 h-8 text-brand-gold mx-auto mb-2" />
-                  <p className="text-xs text-brand-ivory font-cinzel font-semibold uppercase tracking-wider mb-1">
-                    Click to select photos from device
+                  <Upload className="w-7 h-7 text-brand-gold mx-auto mb-2" />
+                  <p className="text-xs text-brand-ivory font-cinzel font-semibold uppercase tracking-wider mb-0.5">
+                    Drag & Drop Photos Here, or Tap to Browse
                   </p>
-                  <p className="text-[11px] text-brand-muted">
-                    Supports multiple JPG, PNG, WEBP files simultaneously (uploads to Cloud Storage)
+                  <p className="text-[11px] text-brand-muted flex items-center justify-center gap-2 mt-1">
+                    <Clipboard className="w-3.5 h-3.5 text-brand-gold" /> Or simply press <strong>Ctrl + V</strong> to paste from clipboard
                   </p>
                 </div>
 
+                {/* Direct Image URL Option */}
                 <div className="flex items-center gap-3 my-3">
                   <div className="flex-1 h-[1px] bg-brand-borderDark" />
-                  <span className="text-[10px] text-brand-muted font-cinzel uppercase">OR PASTE URL</span>
+                  <span className="text-[10px] text-brand-muted font-cinzel uppercase">OR PASTE WEB LINK</span>
                   <div className="flex-1 h-[1px] bg-brand-borderDark" />
                 </div>
 
-                <input
-                  type="text"
-                  value={photoUrl}
-                  onChange={(e) => setPhotoUrl(e.target.value)}
-                  placeholder="Paste direct image URL (https://...)"
-                  className="w-full bg-brand-charcoal border border-brand-borderDark rounded-lg px-4 py-2.5 text-xs text-white focus:outline-none focus:border-brand-gold"
-                />
+                <div className="relative">
+                  <LinkIcon className="w-4 h-4 text-brand-gold absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={photoUrl}
+                    onChange={(e) => setPhotoUrl(e.target.value)}
+                    placeholder="Paste direct image link (https://...)"
+                    className="w-full bg-brand-charcoal border border-brand-borderDark rounded-lg pl-9 pr-4 py-2.5 text-xs text-white focus:outline-none focus:border-brand-gold"
+                  />
+                </div>
               </div>
 
-              {/* Previews if local files picked */}
+              {/* Previews of Selected Files */}
               {previewImages.length > 0 && (
                 <div>
-                  <span className="text-xs font-cinzel text-brand-goldLight uppercase block mb-2">
-                    Selected Files ({previewImages.length} images ready)
-                  </span>
-                  <div className="grid grid-cols-4 gap-2 max-h-48 overflow-y-auto p-1 bg-brand-charcoal rounded-lg">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-cinzel text-brand-goldLight uppercase font-semibold">
+                      Selected Files ({previewImages.length} images ready to upload)
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedFiles([]);
+                        setPreviewImages([]);
+                      }}
+                      className="text-[11px] text-red-400 hover:underline"
+                    >
+                      Clear All
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 max-h-52 overflow-y-auto p-2 bg-brand-charcoal rounded-xl border border-brand-borderDark">
                     {previewImages.map((src, idx) => (
-                      <div key={idx} className="relative aspect-square rounded overflow-hidden border border-brand-borderDark">
+                      <div
+                        key={idx}
+                        className="relative aspect-square rounded-lg overflow-hidden border border-brand-borderDark group"
+                      >
                         <img src={src} alt="Preview" className="w-full h-full object-cover" />
                         <button
                           type="button"
@@ -401,7 +573,8 @@ export default function PhotoManager({
                             setPreviewImages(previewImages.filter((_, i) => i !== idx));
                             setSelectedFiles(selectedFiles.filter((_, i) => i !== idx));
                           }}
-                          className="absolute top-1 right-1 bg-red-600 text-white rounded-full p-0.5"
+                          className="absolute top-1 right-1 bg-red-600 hover:bg-red-700 text-white rounded-full p-1 shadow"
+                          title="Remove this photo"
                         >
                           <X className="w-3 h-3" />
                         </button>
@@ -411,22 +584,37 @@ export default function PhotoManager({
                 </div>
               )}
 
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-brand-borderDark">
-                <button
-                  type="button"
-                  onClick={() => setIsUploadOpen(false)}
-                  className="px-5 py-2.5 bg-brand-charcoal text-brand-muted hover:text-white text-xs font-cinzel rounded-lg"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isUploading || (previewImages.length === 0 && !photoUrl.trim())}
-                  className="px-6 py-2.5 bg-brand-gold text-brand-charcoal hover:bg-brand-goldHover disabled:opacity-50 font-cinzel text-xs tracking-wider uppercase font-bold rounded-lg shadow-lg flex items-center gap-2"
-                >
-                  {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                  <span>{isUploading ? 'Uploading to Cloud...' : 'Save to Category'}</span>
-                </button>
+              {/* Form Buttons */}
+              <div className="flex items-center justify-between gap-3 pt-4 border-t border-brand-borderDark">
+                <span className="text-xs text-brand-muted font-sans">
+                  {uploadProgressText || `${previewImages.length} items queued`}
+                </span>
+
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setIsUploadOpen(false)}
+                    className="px-5 py-2.5 bg-brand-charcoal text-brand-muted hover:text-white text-xs font-cinzel rounded-lg transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isUploading || (previewImages.length === 0 && !photoUrl.trim())}
+                    className="px-6 py-2.5 bg-brand-gold text-brand-charcoal hover:bg-brand-goldHover disabled:opacity-50 font-cinzel text-xs tracking-wider uppercase font-bold rounded-lg shadow-xl flex items-center gap-2 transition-transform hover:scale-105"
+                  >
+                    {isUploading ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Check className="w-4 h-4" />
+                    )}
+                    <span>
+                      {isUploading
+                        ? uploadProgressText || 'Uploading to Cloud...'
+                        : `Upload ${previewImages.length > 0 ? `(${previewImages.length})` : ''}`}
+                    </span>
+                  </button>
+                </div>
               </div>
             </form>
           </div>
@@ -442,7 +630,7 @@ export default function PhotoManager({
           >
             <X className="w-8 h-8" />
           </button>
-          
+
           <div className="max-w-4xl max-h-[85vh] flex flex-col items-center">
             <img
               src={lightboxPhoto.img}
@@ -453,14 +641,11 @@ export default function PhotoManager({
               <span className="text-xs font-cinzel text-brand-gold tracking-widest uppercase block mb-1">
                 Category: {lightboxPhoto.category}
               </span>
-              <h3 className="text-xl font-serif text-white">
-                {lightboxPhoto.title}
-              </h3>
+              <h3 className="text-xl font-serif text-white">{lightboxPhoto.title}</h3>
             </div>
           </div>
         </div>
       )}
-
     </div>
   );
 }
